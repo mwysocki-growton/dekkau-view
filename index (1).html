@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Produkcji – Dekkau</title>
+<script src="https://cdn.jsdelivr.net/npm/monday-sdk-js/dist/main.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700&display=swap');
+  :root {
+    --bg:#0d0f14;--bg2:#13161e;--bg3:#1a1e28;
+    --border:rgba(255,255,255,0.07);--text:#e8eaf0;--dim:#7a8099;--accent:#4f8fff;
+    --c-zam:#fdab3d;--c-przy:#4f8fff;--c-prod:#9b59f5;--c-mont:#e74c6e;
+    --c-ok:#00c875;--c-wt:#fdab3d;--c-brak:#007eb5;--c-wm:#df2f4a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'Barlow Condensed',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+  .top{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;height:48px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .logo{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:17px;letter-spacing:2px;color:var(--accent);text-transform:uppercase}
+  .sep{width:1px;height:22px;background:var(--border)}
+  .top-title{font-size:12px;color:var(--dim);letter-spacing:1px;text-transform:uppercase}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .ts{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
+  .rw{display:flex;align-items:center;gap:7px}
+  .ring-svg{width:22px;height:22px;transform:rotate(-90deg)}
+  .ring-bg{fill:none;stroke:rgba(255,255,255,.08);stroke-width:2.5}
+  .ring-fill{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:56.55;stroke-dashoffset:0;transition:stroke-dashoffset 1s linear,stroke .3s}
+  .ring-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);min-width:22px}
+  .rbtn{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:rgba(79,143,255,.1);color:var(--accent);border:1px solid rgba(79,143,255,.3);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .15s}
+  .rbtn:hover{background:rgba(79,143,255,.2)}
+
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);flex-shrink:0;border-bottom:2px solid var(--border)}
+  .tile{background:var(--bg2);padding:11px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .15s}
+  .tile:hover,.tile.on{background:var(--bg3)}
+  .tnum{font-family:'Rajdhani',sans-serif;font-size:40px;font-weight:700;line-height:1}
+  .tinfo{flex:1;min-width:0}
+  .tlbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
+  .tsub{font-size:11px;color:var(--dim);margin-top:1px}
+  .tbar{height:3px;border-radius:2px;margin-top:5px;background:rgba(255,255,255,.07)}
+  .tbar-f{height:100%;border-radius:2px;transition:width .6s ease}
+  .t0 .tnum{color:var(--c-zam)} .t0 .tbar-f{background:var(--c-zam)}
+  .t1 .tnum{color:var(--c-przy)} .t1 .tbar-f{background:var(--c-przy)}
+  .t2 .tnum{color:var(--c-prod)} .t2 .tbar-f{background:var(--c-prod)}
+  .t3 .tnum{color:var(--c-mont)} .t3 .tbar-f{background:var(--c-mont)}
+
+  .main{display:grid;grid-template-columns:1fr 1fr;flex:1;overflow:hidden;gap:1px;background:var(--border)}
+  .panel{background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+  .phdr{padding:8px 13px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+  .pttl{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
+  .pcnt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);margin-left:auto}
+  .csel{padding:6px 13px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+  .csel-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+  .cbtn{font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.5px;padding:2px 8px;border-radius:3px;border:1px solid var(--border);cursor:pointer;transition:all .15s;text-transform:uppercase;background:transparent;color:var(--dim)}
+  .cbtn.on{background:rgba(79,143,255,.15);border-color:var(--accent);color:var(--accent)}
+  .cbtn:hover{border-color:rgba(79,143,255,.4);color:var(--text)}
+
+  .twrap{flex:1;overflow:auto}
+  .twrap::-webkit-scrollbar{width:4px;height:4px}
+  .twrap::-webkit-scrollbar-track{background:var(--bg)}
+  .twrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead tr{background:var(--bg3);position:sticky;top:0;z-index:2}
+  thead th{padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--dim);text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+  tbody tr{border-bottom:1px solid rgba(255,255,255,.04);transition:background .1s}
+  tbody tr:hover{background:var(--bg3)}
+  tbody td{padding:5px 10px;white-space:nowrap}
+  .oname{font-weight:600;font-size:12px;color:var(--text);max-width:145px;overflow:hidden;text-overflow:ellipsis}
+  .olink{text-decoration:none;color:inherit}
+  .olink:hover .oname{color:var(--accent)}
+
+  .b{display:inline-flex;align-items:center;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+  .bg{background:rgba(0,200,117,.15);color:var(--c-ok)}
+  .bw{background:rgba(253,171,61,.15);color:var(--c-wt)}
+  .bc{background:rgba(85,90,110,.25);color:var(--dim)}
+  .bb{background:rgba(0,126,181,.15);color:var(--c-brak)}
+  .bm{background:rgba(223,47,74,.15);color:var(--c-wm)}
+  .bn{background:rgba(85,90,110,.08);color:rgba(122,128,153,.35);font-size:8px}
+  .ms{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:3px}
+  .ms-p{background:rgba(79,143,255,.15);color:var(--c-przy)}
+  .ms-pr{background:rgba(155,89,245,.15);color:var(--c-prod)}
+  .ms-m{background:rgba(231,76,110,.15);color:var(--c-mont)}
+  .ms-z{background:rgba(0,200,117,.07);color:rgba(0,200,117,.4)}
+  .ms-r{background:rgba(64,22,148,.18);color:#7c5fc4}
+
+  .cwrap{flex:1;overflow-y:auto;padding:10px 13px}
+  .cwrap::-webkit-scrollbar{width:4px}
+  .cwrap::-webkit-scrollbar-track{background:var(--bg)}
+  .cwrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+  .mblock{margin-bottom:18px}
+  .mttl{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;letter-spacing:3px;text-transform:uppercase;color:var(--text);margin-bottom:6px;display:flex;align-items:baseline;gap:8px}
+  .myr{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);font-weight:400}
+  .cgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .chd{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);text-align:center;padding:3px 0;letter-spacing:1px}
+  .cday{min-height:60px;background:var(--bg2);border-radius:3px;border:1px solid var(--border);padding:3px;overflow:hidden}
+  .cday.empty{background:transparent;border-color:transparent}
+  .cday.today{border-color:rgba(79,143,255,.5)}
+  .cdn{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);margin-bottom:2px}
+  .cday.today .cdn{color:var(--accent);font-weight:700}
+  .ev{font-size:9px;font-weight:700;padding:2px 4px;border-radius:2px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid;line-height:1.3}
+  .ej{background:rgba(79,143,255,.2);color:#a0c0ff;border-color:#4f8fff}
+  .ea{background:rgba(0,200,117,.18);color:#7de8c0;border-color:#00c875}
+  .eo{background:rgba(155,89,245,.2);color:#c0a0ff;border-color:#9b59f5}
+  .clgnd{padding:6px 13px;display:flex;gap:12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;align-items:center;flex-wrap:wrap}
+  .leg{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
+  .ldot{width:7px;height:7px;border-radius:50%}
+  @keyframes flash{0%{background:rgba(79,143,255,.05)}100%{background:transparent}}
+  .flash{animation:flash .5s ease}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="logo">Dekkau</span>
+  <div class="sep"></div>
+  <span class="top-title">Dashboard Produkcji</span>
+  <div class="top-right">
+    <span class="ts" id="ts">ładowanie…</span>
+    <div class="rw">
+      <svg class="ring-svg" viewBox="0 0 20 20">
+        <circle class="ring-bg" cx="10" cy="10" r="9"/>
+        <circle class="ring-fill" id="ring" cx="10" cy="10" r="9"/>
+      </svg>
+      <span class="ring-lbl" id="ring-lbl">30s</span>
+    </div>
+    <button class="rbtn" onclick="fetchData()">↻ Odśwież</button>
+  </div>
+</div>
+
+<div class="tiles">
+  <div class="tile t0 on" onclick="setFilter('all')">
+    <div class="tnum" id="n0">—</div>
+    <div class="tinfo"><div class="tlbl">Zamówienia</div><div class="tsub">Wszystkie aktywne</div><div class="tbar"><div class="tbar-f" style="width:100%"></div></div></div>
+  </div>
+  <div class="tile t1" onclick="setFilter('przy')">
+    <div class="tnum" id="n1">—</div>
+    <div class="tinfo"><div class="tlbl">Przygotowanie</div><div class="tsub">Fundament / pomiar</div><div class="tbar"><div class="tbar-f" id="b1"></div></div></div>
+  </div>
+  <div class="tile t2" onclick="setFilter('prod')">
+    <div class="tnum" id="n2">—</div>
+    <div class="tinfo"><div class="tlbl">W Produkcji</div><div class="tsub">Produkcja / Magazyn</div><div class="tbar"><div class="tbar-f" id="b2"></div></div></div>
+  </div>
+  <div class="tile t3" onclick="setFilter('mont')">
+    <div class="tnum" id="n3">—</div>
+    <div class="tinfo"><div class="tlbl">W Montażu</div><div class="tsub">Aktywny montaż</div><div class="tbar"><div class="tbar-f" id="b3"></div></div></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="panel">
+    <div class="phdr"><span class="pttl">📦 Zamówienia</span><span class="pcnt" id="ocnt">—</span></div>
+    <div class="csel" id="csel"><span class="csel-lbl">Kolumny:</span></div>
+    <div class="twrap"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+  </div>
+  <div class="panel">
+    <div class="phdr"><span class="pttl">📅 Kalendarz Montażystów</span><span class="pcnt" id="ccnt">—</span></div>
+    <div class="cwrap" id="cwrap"></div>
+    <div class="clgnd" id="clgnd"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  KONFIGURACJA — zmień tu jeśli potrzeba
+// ══════════════════════════════════════════════════
+const BOARD_ID  = 9806895585;
+const REFRESH_S = 30;          // sekundy między odświeżeniami (zmień na 60 dla minuty)
+
+// ══════════════════════════════════════════════════
+const COL_IDS = ["status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418",
+  "color_mkwjsxje","color_mkwnp06x","color_mm1qa6dc","color_mkwnf17j",
+  "date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"];
+
+const GQL = `query($ids:[ID!],$cols:[String!]){boards(ids:$ids){items_page(limit:500){items{id name url column_values(ids:$cols){id text}}}}}`;
+
+const STATUS_COLS = [
+  {id:'color_mkwnevts',label:'Projekt'},{id:'color_mm1qtcpa',label:'Fundamenty'},
+  {id:'color_mkwj4418',label:'Konstrukcja'},{id:'color_mkwjsxje',label:'Ściany'},
+  {id:'color_mkwnp06x',label:'Malarnia'},{id:'color_mm1qa6dc',label:'Magazyn'},
+  {id:'color_mkwnf17j',label:'Montaż'},
+];
+const DATE_DEFS = [{id:'date_mm1qt8ds',label:'M1'},{id:'date_mm1qejwn',label:'M2'},{id:'date_mm1qvjxa',label:'M3'}];
+const MONTHS = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const DAYS   = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+const STATUS_ORDER = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
+
+let items     = [];
+let visCols   = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','color_mm1qa6dc','color_mkwnf17j']);
+let curFilter = 'all';
+let countdown = REFRESH_S;
+let timerInt  = null;
+const CIRC    = 2 * Math.PI * 9; // ≈ 56.55
+
+// ── monday SDK ──────────────────────────────────────────────────────
+let monday;
+try { monday = window.mondaySdk(); } catch(e) { monday = null; }
+
+// ── Fetch ───────────────────────────────────────────────────────────
+async function fetchData() {
+  resetCountdown();
+  try {
+    if (!monday) throw new Error('no sdk');
+    const res = await monday.api(GQL, { variables: { ids: [String(BOARD_ID)], cols: COL_IDS } });
+    const raw = res?.data?.boards?.[0]?.items_page?.items;
+    if (!raw) throw new Error('empty');
+
+    items = raw.map(item => {
+      const cv = {};
+      item.column_values.forEach(c => { cv[c.id] = c.text || null; });
+      return { id: item.id, name: item.name, url: item.url, cv };
+    });
+
+    document.getElementById('ts').textContent = 'odświeżono ' + new Date().toLocaleTimeString('pl-PL');
+  } catch(e) {
+    if (items.length === 0) loadSnapshot();
+    document.getElementById('ts').textContent = '⚠ tryb offline';
+  }
+  render();
+}
+
+// ── Countdown ───────────────────────────────────────────────────────
+function resetCountdown() {
+  countdown = REFRESH_S;
+  clearInterval(timerInt);
+  timerInt = setInterval(() => {
+    countdown = Math.max(0, countdown - 1);
+    updateRing();
+    if (countdown === 0) fetchData();
+  }, 1000);
+  updateRing();
+}
+
+function updateRing() {
+  const pct  = countdown / REFRESH_S;
+  const ring = document.getElementById('ring');
+  ring.style.strokeDashoffset = CIRC * (1 - pct);
+  ring.style.stroke = countdown <= 5 ? '#e74c6e' : 'var(--accent)';
+  document.getElementById('ring-lbl').textContent = countdown + 's';
+}
+
+// ── Render all ──────────────────────────────────────────────────────
+function render() {
+  updateTiles();
+  renderTable();
+  buildCalendar();
+}
+
+function isActive(s) { return !['Zrealizowane','Rozliczone'].includes(s); }
+
+function updateTiles() {
+  const active = items.filter(i => isActive(i.cv.status9));
+  const przy   = active.filter(i => i.cv.status9 === 'Fundament / pomiar');
+  const prod   = active.filter(i => ['Produkcja','Magazyn'].includes(i.cv.status9));
+  const mont   = active.filter(i => i.cv.status9 === 'Montaż');
+  const tot    = active.length || 1;
+  document.getElementById('n0').textContent = active.length;
+  document.getElementById('n1').textContent = przy.length;
+  document.getElementById('n2').textContent = prod.length;
+  document.getElementById('n3').textContent = mont.length;
+  document.getElementById('b1').style.width = (przy.length/tot*100)+'%';
+  document.getElementById('b2').style.width = (prod.length/tot*100)+'%';
+  document.getElementById('b3').style.width = (mont.length/tot*100)+'%';
+}
+
+function setFilter(f) {
+  curFilter = f;
+  const keys = ['all','przy','prod','mont'];
+  document.querySelectorAll('.tile').forEach((t,i) => t.classList.toggle('on', keys[i]===f));
+  renderTable();
+}
+
+function getFiltered() {
+  if (curFilter==='przy') return items.filter(i=>i.cv.status9==='Fundament / pomiar');
+  if (curFilter==='prod') return items.filter(i=>['Produkcja','Magazyn'].includes(i.cv.status9));
+  if (curFilter==='mont') return items.filter(i=>i.cv.status9==='Montaż');
+  return items;
+}
+
+function badge(v) {
+  if (!v) return '<span class="b bn">—</span>';
+  const m={Gotowe:'bg','W trakcie':'bw',Czeka:'bc',Brak:'bb','W miejscu':'bm'};
+  return `<span class="b ${m[v]||'bc'}">${v==='W trakcie'?'W tr.':v}</span>`;
+}
+function msBadge(s) {
+  const m={'Fundament / pomiar':['ms-p','PRZYGOT.'],Produkcja:['ms-pr','PROD.'],Magazyn:['ms-pr','MAGAZYN'],Montaż:['ms-m','MONTAŻ'],Zrealizowane:['ms-z','ZREALIZ.'],Rozliczone:['ms-r','ROZLICZ.']};
+  const [c,l]=m[s]||['ms-p',s];
+  return `<span class="ms ${c}">${l}</span>`;
+}
+
+function renderTable() {
+  const list = getFiltered();
+  document.getElementById('ocnt').textContent = list.length+' zamówień';
+  const vis = STATUS_COLS.filter(c=>visCols.has(c.id));
+  let h='<tr><th>Zamówienie</th><th>Status</th>';
+  vis.forEach(c=>h+=`<th>${c.label}</th>`);
+  document.getElementById('th').innerHTML = h+'</tr>';
+  const sorted = [...list].sort((a,b)=>STATUS_ORDER.indexOf(a.cv.status9)-STATUS_ORDER.indexOf(b.cv.status9));
+  let body='';
+  sorted.forEach(item=>{
+    body+=`<tr><td><a class="olink" href="${item.url}" target="_blank"><div class="oname" title="${item.name}">${item.name}</div></a></td><td>${msBadge(item.cv.status9)}</td>`;
+    vis.forEach(c=>{body+=`<td>${badge(item.cv[c.id])}</td>`;});
+    body+='</tr>';
+  });
+  const tb = document.getElementById('tb');
+  tb.innerHTML = body||'<tr><td colspan="20" style="text-align:center;padding:24px;color:var(--dim)">Brak zamówień</td></tr>';
+  tb.classList.remove('flash'); void tb.offsetWidth; tb.classList.add('flash');
+}
+
+function buildColSel() {
+  const cont=document.getElementById('csel');
+  STATUS_COLS.forEach(c=>{
+    const btn=document.createElement('button');
+    btn.className='cbtn'+(visCols.has(c.id)?' on':'');
+    btn.textContent=c.label;
+    btn.onclick=()=>{visCols.has(c.id)?visCols.delete(c.id):visCols.add(c.id);btn.classList.toggle('on');renderTable();};
+    cont.appendChild(btn);
+  });
+}
+
+function buildCalendar() {
+  const events=[];
+  items.forEach(item=>{
+    DATE_DEFS.forEach(dd=>{
+      const v=item.cv[dd.id];
+      if(v&&/\d{4}-\d{2}-\d{2}/.test(v))
+        events.push({date:v.slice(0,10),name:item.name,person:item.cv.color_mm1q37tr,label:dd.label,url:item.url});
+    });
+  });
+
+  const months={};
+  events.forEach(ev=>{
+    const d=new Date(ev.date+'T12:00:00');
+    const k=`${d.getFullYear()}-${d.getMonth()}`;
+    if(!months[k]) months[k]={y:d.getFullYear(),m:d.getMonth(),days:{}};
+    const day=d.getDate();
+    if(!months[k].days[day]) months[k].days[day]=[];
+    months[k].days[day].push(ev);
+  });
+
+  const today=new Date();
+  for(let o=0;o<=1;o++){
+    const d=new Date(today.getFullYear(),today.getMonth()+o,1);
+    const k=`${d.getFullYear()}-${d.getMonth()}`;
+    if(!months[k]) months[k]={y:d.getFullYear(),m:d.getMonth(),days:{}};
+  }
+
+  const sorted=Object.values(months).sort((a,b)=>a.y*12+a.m-(b.y*12+b.m));
+  const wrap=document.getElementById('cwrap');
+  wrap.innerHTML='';
+  document.getElementById('ccnt').textContent=events.length+' terminów';
+
+  sorted.forEach(({y,m,days})=>{
+    const firstDOW=(new Date(y,m,1).getDay()+6)%7;
+    const dim=new Date(y,m+1,0).getDate();
+    const block=document.createElement('div');
+    block.className='mblock';
+    let html=`<div class="mttl">${MONTHS[m]} <span class="myr">${y}</span></div><div class="cgrid">`;
+    DAYS.forEach(d=>{html+=`<div class="chd">${d}</div>`;});
+    for(let i=0;i<firstDOW;i++) html+='<div class="cday empty"></div>';
+    for(let d=1;d<=dim;d++){
+      const isToday=today.getFullYear()===y&&today.getMonth()===m&&today.getDate()===d;
+      html+=`<div class="cday${isToday?' today':''}"><div class="cdn">${d}</div>`;
+      if(days[d]) days[d].forEach(ev=>{
+        const p=(ev.person||'').toLowerCase();
+        const cls=p==='jacek'?'ej':p==='adam'?'ea':'eo';
+        const short=ev.name.length>15?ev.name.slice(0,13)+'…':ev.name;
+        html+=`<div class="ev ${cls}" title="${ev.name} – ${ev.label}">${short}</div>`;
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+    block.innerHTML=html;
+    wrap.appendChild(block);
+  });
+
+  const persons=[...new Set(events.map(e=>e.person).filter(Boolean))];
+  const cmap={Jacek:'#4f8fff',Adam:'#00c875'};
+  document.getElementById('clgnd').innerHTML=persons.length
+    ?persons.map(p=>`<div class="leg"><div class="ldot" style="background:${cmap[p]||'#9b59f5'}"></div>${p}</div>`).join('')
+    :'<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
+}
+
+// ── Snapshot fallback ───────────────────────────────────────────────
+function loadSnapshot() {
+  items = [
+    {id:"11441788906",name:"4 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441788906",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441801650",name:"8 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441801650",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441797804",name:"7 / Skrzelczyce",url:"https://growton.monday.com/boards/9806895585/pulses/11441797804",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"W trakcie",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441793229",name:"2 / Mikołów",url:"https://growton.monday.com/boards/9806895585/pulses/11441793229",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11467123943",name:"16 / Zabrzeg",url:"https://growton.monday.com/boards/9806895585/pulses/11467123943",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441799792",name:"10 / Chechło",url:"https://growton.monday.com/boards/9806895585/pulses/11441799792",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"W trakcie",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441792995",name:"12 / Myszków",url:"https://growton.monday.com/boards/9806895585/pulses/11441792995",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441799793",name:"11 / Dąbrowa Górnicza",url:"https://growton.monday.com/boards/9806895585/pulses/11441799793",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Brak",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-03-24",date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441797533",name:"14 / Szczepanów",url:"https://growton.monday.com/boards/9806895585/pulses/11441797533",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Brak",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:"2026-04-30",date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441801634",name:"13 / Nowy Wiśnicz",url:"https://growton.monday.com/boards/9806895585/pulses/11441801634",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"W trakcie",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-04-20",date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441786866",name:"5 / Radom",url:"https://growton.monday.com/boards/9806895585/pulses/11441786866",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441799821",name:"15 / Sadków",url:"https://growton.monday.com/boards/9806895585/pulses/11441799821",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"W trakcie",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+    {id:"11441794712",name:"3 / Wyry",url:"https://growton.monday.com/boards/9806895585/pulses/11441794712",cv:{status9:"Montaż",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"Gotowe",color_mkwnf17j:"W trakcie",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-03-19",date_mm1qejwn:"2026-03-25",date_mm1qvjxa:null}},
+    {id:"11441797341",name:"6 / Katowice",url:"https://growton.monday.com/boards/9806895585/pulses/11441797341",cv:{status9:"Rozliczone",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"Gotowe",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
+  ];
+}
+
+// ── Start ───────────────────────────────────────────────────────────
+buildColSel();
+fetchData();
+</script>
+</body>
+</html>
