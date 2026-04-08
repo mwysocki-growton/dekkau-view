@@ -30,8 +30,7 @@
   .rbtn{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:rgba(79,143,255,.1);color:var(--accent);border:1px solid rgba(79,143,255,.3);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .15s}
   .rbtn:hover{background:rgba(79,143,255,.2)}
 
-  /* status bar na dole - tylko gdy błąd */
-  .statusbar{position:fixed;bottom:0;left:0;right:0;padding:4px 16px;font-family:'JetBrains Mono',monospace;font-size:10px;display:none;z-index:99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .statusbar{position:fixed;bottom:0;left:0;right:0;padding:4px 16px;font-family:'JetBrains Mono',monospace;font-size:10px;display:none;z-index:99}
   .statusbar.err{display:block;background:rgba(231,76,110,.15);color:#e74c6e;border-top:1px solid rgba(231,76,110,.3)}
   .statusbar.ok{display:block;background:rgba(0,200,117,.1);color:var(--c-ok);border-top:1px solid rgba(0,200,117,.2)}
 
@@ -168,35 +167,27 @@
 
 <script>
 // ══════════════════════════════════════════════════
-//  KONFIGURACJA
-// ══════════════════════════════════════════════════
 const BOARD_ID  = 9806895585;
-const REFRESH_S = 30; // zmień na 60 dla minuty
-
+const REFRESH_S = 30;
 // ══════════════════════════════════════════════════
-const COL_IDS = [
-  "status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418",
-  "color_mkwjsxje","color_mkwnp06x","color_mm1qa6dc","color_mkwnf17j",
-  "date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"
-];
 
-const GQL = `
-  query GetItems($boardId: ID!, $colIds: [String!]) {
-    boards(ids: [$boardId]) {
-      items_page(limit: 500) {
-        items {
+// Zapytanie z wartościami wbudowanymi bezpośrednio — bez zmiennych GraphQL
+// bo monday SDK w Apps Framework nie obsługuje zmiennych w ten sposób
+const GQL = `{
+  boards(ids: [${BOARD_ID}]) {
+    items_page(limit: 500) {
+      items {
+        id
+        name
+        url
+        column_values(ids: ["status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418","color_mkwjsxje","color_mkwnp06x","color_mm1qa6dc","color_mkwnf17j","date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"]) {
           id
-          name
-          url
-          column_values(ids: $colIds) {
-            id
-            text
-          }
+          text
         }
       }
     }
   }
-`;
+}`;
 
 const STATUS_COLS = [
   {id:'color_mkwnevts',label:'Projekt'},
@@ -207,11 +198,11 @@ const STATUS_COLS = [
   {id:'color_mm1qa6dc',label:'Magazyn'},
   {id:'color_mkwnf17j',label:'Montaż'},
 ];
-const DATE_DEFS  = [{id:'date_mm1qt8ds',label:'M1'},{id:'date_mm1qejwn',label:'M2'},{id:'date_mm1qvjxa',label:'M3'}];
-const MONTHS     = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
-const DAYS       = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
-const S_ORDER    = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
-const CIRC       = 2 * Math.PI * 9;
+const DATE_DEFS = [{id:'date_mm1qt8ds',label:'M1'},{id:'date_mm1qejwn',label:'M2'},{id:'date_mm1qvjxa',label:'M3'}];
+const MONTHS    = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const DAYS      = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+const S_ORDER   = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
+const CIRC      = 2 * Math.PI * 9;
 
 let items     = [];
 let visCols   = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','color_mm1qa6dc','color_mkwnf17j']);
@@ -220,7 +211,6 @@ let countdown = REFRESH_S;
 let timerInt  = null;
 let monday    = null;
 
-// ── Status bar helper ────────────────────────────────────────────────
 function setStatus(msg, isErr) {
   const bar = document.getElementById('statusbar');
   bar.textContent = msg;
@@ -228,41 +218,37 @@ function setStatus(msg, isErr) {
   if (!isErr) setTimeout(() => { bar.className = 'statusbar'; }, 3000);
 }
 
-// ── SDK init ─────────────────────────────────────────────────────────
-// monday SDK wymaga wywołania PRZED jakimkolwiek api()
-function initSDK() {
-  try {
-    monday = window.mondaySdk();
-    monday.setApiVersion('2024-01');
-    return true;
-  } catch(e) {
-    setStatus('SDK init error: ' + e.message, true);
-    return false;
-  }
-}
-
-// ── Fetch ─────────────────────────────────────────────────────────────
+// ── Fetch ──────────────────────────────────────────────────────────
 async function fetchData() {
   resetCountdown();
 
-  if (!monday) {
-    if (!initSDK()) { loadSnapshot(); render(); return; }
-  }
-
   try {
-    const res = await monday.api(GQL, {
-      variables: {
-        boardId: String(BOARD_ID),
-        colIds:  COL_IDS
-      }
-    });
+    if (!monday) {
+      monday = window.mondaySdk();
+      monday.setApiVersion('2024-01');
+    }
 
-    // monday SDK może zwrócić dane na różne sposoby
-    const boards = res?.data?.boards ?? res?.boards;
-    if (!boards || !boards[0]) throw new Error('Brak danych boards: ' + JSON.stringify(res).slice(0, 200));
+    // monday.api() w Apps Framework przyjmuje prosty string zapytania
+    const res = await monday.api(GQL);
 
-    const rawItems = boards[0]?.items_page?.items ?? boards[0]?.items;
-    if (!rawItems) throw new Error('Brak items: ' + JSON.stringify(boards[0]).slice(0, 200));
+    // Wyciągnij items — obsłuż oba możliwe formaty odpowiedzi
+    const boards =
+      res?.data?.boards ||
+      res?.boards ||
+      null;
+
+    if (!boards?.[0]) {
+      throw new Error('Brak boards w odpowiedzi: ' + JSON.stringify(res).slice(0,300));
+    }
+
+    const rawItems =
+      boards[0]?.items_page?.items ||
+      boards[0]?.items ||
+      null;
+
+    if (!rawItems) {
+      throw new Error('Brak items: ' + JSON.stringify(boards[0]).slice(0,200));
+    }
 
     items = rawItems.map(item => {
       const cv = {};
@@ -271,19 +257,19 @@ async function fetchData() {
     });
 
     document.getElementById('ts').textContent = 'live · ' + new Date().toLocaleTimeString('pl-PL');
-    setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień o ' + new Date().toLocaleTimeString('pl-PL'), false);
+    setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień · ' + new Date().toLocaleTimeString('pl-PL'), false);
 
   } catch(err) {
-    const msg = err?.message || String(err);
-    setStatus('⚠ Błąd API: ' + msg, true);
-    console.error('[Dashboard] fetch error:', err);
+    const msg = String(err?.message || err).slice(0, 200);
+    setStatus('⚠ ' + msg, true);
+    console.error('[Dashboard]', err);
     if (items.length === 0) loadSnapshot();
   }
 
   render();
 }
 
-// ── Countdown ring ────────────────────────────────────────────────────
+// ── Countdown ──────────────────────────────────────────────────────
 function resetCountdown() {
   countdown = REFRESH_S;
   clearInterval(timerInt);
@@ -302,12 +288,8 @@ function updateRing() {
   document.getElementById('ring-lbl').textContent = countdown + 's';
 }
 
-// ── Render ────────────────────────────────────────────────────────────
-function render() {
-  updateTiles();
-  renderTable();
-  buildCalendar();
-}
+// ── Render ─────────────────────────────────────────────────────────
+function render() { updateTiles(); renderTable(); buildCalendar(); }
 
 function isActive(s) { return !['Zrealizowane','Rozliczone'].includes(s); }
 
@@ -345,6 +327,7 @@ function badge(v) {
   const m={Gotowe:'bg','W trakcie':'bw',Czeka:'bc',Brak:'bb','W miejscu':'bm'};
   return `<span class="b ${m[v]||'bc'}">${v==='W trakcie'?'W tr.':v}</span>`;
 }
+
 function msBadge(s) {
   const m={'Fundament / pomiar':['ms-p','PRZYGOT.'],Produkcja:['ms-pr','PROD.'],Magazyn:['ms-pr','MAGAZYN'],Montaż:['ms-m','MONTAŻ'],Zrealizowane:['ms-z','ZREALIZ.'],Rozliczone:['ms-r','ROZLICZ.']};
   const [c,l]=m[s]||['ms-p',s];
@@ -355,7 +338,7 @@ function renderTable() {
   const list = getFiltered();
   document.getElementById('ocnt').textContent = list.length + ' zamówień';
   const vis = STATUS_COLS.filter(c => visCols.has(c.id));
-  let h='<tr><th>Zamówienie</th><th>Status</th>';
+  let h = '<tr><th>Zamówienie</th><th>Status</th>';
   vis.forEach(c => h += `<th>${c.label}</th>`);
   document.getElementById('th').innerHTML = h + '</tr>';
   const sorted = [...list].sort((a,b) => S_ORDER.indexOf(a.cv.status9) - S_ORDER.indexOf(b.cv.status9));
@@ -376,7 +359,7 @@ function buildColSel() {
     const btn = document.createElement('button');
     btn.className = 'cbtn' + (visCols.has(c.id) ? ' on' : '');
     btn.textContent = c.label;
-    btn.onclick = () => { visCols.has(c.id) ? visCols.delete(c.id) : visCols.add(c.id); btn.classList.toggle('on'); renderTable(); };
+    btn.onclick = () => { visCols.has(c.id)?visCols.delete(c.id):visCols.add(c.id); btn.classList.toggle('on'); renderTable(); };
     cont.appendChild(btn);
   });
 }
@@ -395,7 +378,7 @@ function buildCalendar() {
   events.forEach(ev => {
     const d = new Date(ev.date + 'T12:00:00');
     const k = `${d.getFullYear()}-${d.getMonth()}`;
-    if (!months[k]) months[k] = { y: d.getFullYear(), m: d.getMonth(), days: {} };
+    if (!months[k]) months[k] = { y:d.getFullYear(), m:d.getMonth(), days:{} };
     const day = d.getDate();
     if (!months[k].days[day]) months[k].days[day] = [];
     months[k].days[day].push(ev);
@@ -405,10 +388,10 @@ function buildCalendar() {
   for (let o = 0; o <= 1; o++) {
     const d = new Date(today.getFullYear(), today.getMonth()+o, 1);
     const k = `${d.getFullYear()}-${d.getMonth()}`;
-    if (!months[k]) months[k] = { y: d.getFullYear(), m: d.getMonth(), days: {} };
+    if (!months[k]) months[k] = { y:d.getFullYear(), m:d.getMonth(), days:{} };
   }
 
-  const sorted = Object.values(months).sort((a,b) => a.y*12+a.m - (b.y*12+b.m));
+  const sorted = Object.values(months).sort((a,b) => a.y*12+a.m-(b.y*12+b.m));
   const wrap = document.getElementById('cwrap');
   wrap.innerHTML = '';
   document.getElementById('ccnt').textContent = events.length + ' terminów';
@@ -444,14 +427,11 @@ function buildCalendar() {
     : '<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
 }
 
-// ── Snapshot fallback ─────────────────────────────────────────────────
+// ── Snapshot fallback ──────────────────────────────────────────────
 function loadSnapshot() {
   items = [
     {id:"11441788906",name:"4 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441788906",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441801650",name:"8 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441801650",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
     {id:"11441797804",name:"7 / Skrzelczyce",url:"https://growton.monday.com/boards/9806895585/pulses/11441797804",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"W trakcie",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441793229",name:"2 / Mikołów",url:"https://growton.monday.com/boards/9806895585/pulses/11441793229",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11467123943",name:"16 / Zabrzeg",url:"https://growton.monday.com/boards/9806895585/pulses/11467123943",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
     {id:"11441799792",name:"10 / Chechło",url:"https://growton.monday.com/boards/9806895585/pulses/11441799792",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"W trakcie",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
     {id:"11441792995",name:"12 / Myszków",url:"https://growton.monday.com/boards/9806895585/pulses/11441792995",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
     {id:"11441799793",name:"11 / Dąbrowa Górnicza",url:"https://growton.monday.com/boards/9806895585/pulses/11441799793",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Brak",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-03-24",date_mm1qejwn:null,date_mm1qvjxa:null}},
@@ -464,9 +444,8 @@ function loadSnapshot() {
   ];
 }
 
-// ── Start ─────────────────────────────────────────────────────────────
+// ── Start ──────────────────────────────────────────────────────────
 buildColSel();
-initSDK();
 fetchData();
 </script>
 </body>
