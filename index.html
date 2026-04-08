@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard Produkcji – Dekkau</title>
-<script src="https://cdn.jsdelivr.net/npm/monday-sdk-js/dist/main.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=JetBrains+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700&display=swap');
   :root {
@@ -167,27 +166,12 @@
 
 <script>
 // ══════════════════════════════════════════════════
-const BOARD_ID  = 9806895585;
-const REFRESH_S = 30;
-// ══════════════════════════════════════════════════
+//  ▼▼▼ ZMIEŃ TEN URL NA SWÓJ ADRES VERCEL ▼▼▼
+const API_URL = 'https://dekkau-api.vercel.app/api/orders';
+//  ▲▲▲ np. 'https://dekkau-api.vercel.app/api/orders' ▲▲▲
 
-// Zapytanie z wartościami wbudowanymi bezpośrednio — bez zmiennych GraphQL
-// bo monday SDK w Apps Framework nie obsługuje zmiennych w ten sposób
-const GQL = `{
-  boards(ids: [${BOARD_ID}]) {
-    items_page(limit: 500) {
-      items {
-        id
-        name
-        url
-        column_values(ids: ["status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418","color_mkwjsxje","color_mkwnp06x","color_mm1qa6dc","color_mkwnf17j","date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"]) {
-          id
-          text
-        }
-      }
-    }
-  }
-}`;
+const REFRESH_S = 30; // sekund między odświeżeniami (zmień na 60 dla minuty)
+// ══════════════════════════════════════════════════
 
 const STATUS_COLS = [
   {id:'color_mkwnevts',label:'Projekt'},
@@ -209,8 +193,8 @@ let visCols   = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','col
 let curFilter = 'all';
 let countdown = REFRESH_S;
 let timerInt  = null;
-let monday    = null;
 
+// ── Status bar ────────────────────────────────────────────────────
 function setStatus(msg, isErr) {
   const bar = document.getElementById('statusbar');
   bar.textContent = msg;
@@ -218,58 +202,28 @@ function setStatus(msg, isErr) {
   if (!isErr) setTimeout(() => { bar.className = 'statusbar'; }, 3000);
 }
 
-// ── Fetch ──────────────────────────────────────────────────────────
+// ── Fetch z Vercel API ────────────────────────────────────────────
 async function fetchData() {
   resetCountdown();
-
   try {
-    if (!monday) {
-      monday = window.mondaySdk();
-      monday.setApiVersion('2024-01');
-    }
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.items) throw new Error('Brak items w odpowiedzi');
 
-    // monday.api() w Apps Framework przyjmuje prosty string zapytania
-    const res = await monday.api(GQL);
-
-    // Wyciągnij items — obsłuż oba możliwe formaty odpowiedzi
-    const boards =
-      res?.data?.boards ||
-      res?.boards ||
-      null;
-
-    if (!boards?.[0]) {
-      throw new Error('Brak boards w odpowiedzi: ' + JSON.stringify(res).slice(0,300));
-    }
-
-    const rawItems =
-      boards[0]?.items_page?.items ||
-      boards[0]?.items ||
-      null;
-
-    if (!rawItems) {
-      throw new Error('Brak items: ' + JSON.stringify(boards[0]).slice(0,200));
-    }
-
-    items = rawItems.map(item => {
-      const cv = {};
-      (item.column_values || []).forEach(c => { cv[c.id] = c.text || null; });
-      return { id: item.id, name: item.name, url: item.url, cv };
-    });
-
-    document.getElementById('ts').textContent = 'live · ' + new Date().toLocaleTimeString('pl-PL');
-    setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień · ' + new Date().toLocaleTimeString('pl-PL'), false);
-
+    items = data.items;
+    const t = new Date(data.fetchedAt).toLocaleTimeString('pl-PL');
+    document.getElementById('ts').textContent = 'live · ' + t;
+    setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień · ' + t, false);
   } catch(err) {
-    const msg = String(err?.message || err).slice(0, 200);
-    setStatus('⚠ ' + msg, true);
+    setStatus('⚠ ' + err.message, true);
     console.error('[Dashboard]', err);
-    if (items.length === 0) loadSnapshot();
   }
-
   render();
 }
 
-// ── Countdown ──────────────────────────────────────────────────────
+// ── Countdown ring ────────────────────────────────────────────────
 function resetCountdown() {
   countdown = REFRESH_S;
   clearInterval(timerInt);
@@ -288,7 +242,7 @@ function updateRing() {
   document.getElementById('ring-lbl').textContent = countdown + 's';
 }
 
-// ── Render ─────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────
 function render() { updateTiles(); renderTable(); buildCalendar(); }
 
 function isActive(s) { return !['Zrealizowane','Rozliczone'].includes(s); }
@@ -327,7 +281,6 @@ function badge(v) {
   const m={Gotowe:'bg','W trakcie':'bw',Czeka:'bc',Brak:'bb','W miejscu':'bm'};
   return `<span class="b ${m[v]||'bc'}">${v==='W trakcie'?'W tr.':v}</span>`;
 }
-
 function msBadge(s) {
   const m={'Fundament / pomiar':['ms-p','PRZYGOT.'],Produkcja:['ms-pr','PROD.'],Magazyn:['ms-pr','MAGAZYN'],Montaż:['ms-m','MONTAŻ'],Zrealizowane:['ms-z','ZREALIZ.'],Rozliczone:['ms-r','ROZLICZ.']};
   const [c,l]=m[s]||['ms-p',s];
@@ -427,24 +380,7 @@ function buildCalendar() {
     : '<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
 }
 
-// ── Snapshot fallback ──────────────────────────────────────────────
-function loadSnapshot() {
-  items = [
-    {id:"11441788906",name:"4 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441788906",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441797804",name:"7 / Skrzelczyce",url:"https://growton.monday.com/boards/9806895585/pulses/11441797804",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"W trakcie",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441799792",name:"10 / Chechło",url:"https://growton.monday.com/boards/9806895585/pulses/11441799792",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"W trakcie",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441792995",name:"12 / Myszków",url:"https://growton.monday.com/boards/9806895585/pulses/11441792995",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441799793",name:"11 / Dąbrowa Górnicza",url:"https://growton.monday.com/boards/9806895585/pulses/11441799793",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Brak",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-03-24",date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441797533",name:"14 / Szczepanów",url:"https://growton.monday.com/boards/9806895585/pulses/11441797533",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Brak",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:"2026-04-30",date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441801634",name:"13 / Nowy Wiśnicz",url:"https://growton.monday.com/boards/9806895585/pulses/11441801634",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"W trakcie",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-04-20",date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441786866",name:"5 / Radom",url:"https://growton.monday.com/boards/9806895585/pulses/11441786866",cv:{status9:"Magazyn",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"W trakcie",color_mkwnf17j:"Czeka",color_mm1q37tr:"Adam",date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441799821",name:"15 / Sadków",url:"https://growton.monday.com/boards/9806895585/pulses/11441799821",cv:{status9:"Produkcja",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Gotowe",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"W trakcie",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-    {id:"11441794712",name:"3 / Wyry",url:"https://growton.monday.com/boards/9806895585/pulses/11441794712",cv:{status9:"Montaż",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"Gotowe",color_mkwjsxje:"Gotowe",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"Gotowe",color_mkwnf17j:"W trakcie",color_mm1q37tr:"Jacek",date_mm1qt8ds:"2026-03-19",date_mm1qejwn:"2026-03-25",date_mm1qvjxa:null}},
-    {id:"11441797341",name:"6 / Katowice",url:"https://growton.monday.com/boards/9806895585/pulses/11441797341",cv:{status9:"Rozliczone",color_mkwnevts:"Gotowe",color_mm1qtcpa:"Czeka",color_mkwj4418:"Gotowe",color_mkwjsxje:"W trakcie",color_mkwnp06x:"Gotowe",color_mm1qa6dc:"Gotowe",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
-  ];
-}
-
-// ── Start ──────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────
 buildColSel();
 fetchData();
 </script>
