@@ -30,6 +30,11 @@
   .rbtn{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:rgba(79,143,255,.1);color:var(--accent);border:1px solid rgba(79,143,255,.3);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .15s}
   .rbtn:hover{background:rgba(79,143,255,.2)}
 
+  /* status bar na dole - tylko gdy błąd */
+  .statusbar{position:fixed;bottom:0;left:0;right:0;padding:4px 16px;font-family:'JetBrains Mono',monospace;font-size:10px;display:none;z-index:99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .statusbar.err{display:block;background:rgba(231,76,110,.15);color:#e74c6e;border-top:1px solid rgba(231,76,110,.3)}
+  .statusbar.ok{display:block;background:rgba(0,200,117,.1);color:var(--c-ok);border-top:1px solid rgba(0,200,117,.2)}
+
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);flex-shrink:0;border-bottom:2px solid var(--border)}
   .tile{background:var(--bg2);padding:11px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .15s}
   .tile:hover,.tile.on{background:var(--bg3)}
@@ -104,7 +109,7 @@
   .clgnd{padding:6px 13px;display:flex;gap:12px;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;align-items:center;flex-wrap:wrap}
   .leg{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
   .ldot{width:7px;height:7px;border-radius:50%}
-  @keyframes flash{0%{background:rgba(79,143,255,.05)}100%{background:transparent}}
+  @keyframes flash{0%{background:rgba(79,143,255,.06)}100%{background:transparent}}
   .flash{animation:flash .5s ease}
 </style>
 </head>
@@ -115,7 +120,7 @@
   <div class="sep"></div>
   <span class="top-title">Dashboard Produkcji</span>
   <div class="top-right">
-    <span class="ts" id="ts">ładowanie…</span>
+    <span class="ts" id="ts">łączenie…</span>
     <div class="rw">
       <svg class="ring-svg" viewBox="0 0 20 20">
         <circle class="ring-bg" cx="10" cy="10" r="9"/>
@@ -159,66 +164,126 @@
   </div>
 </div>
 
+<div class="statusbar" id="statusbar"></div>
+
 <script>
 // ══════════════════════════════════════════════════
-//  KONFIGURACJA — zmień tu jeśli potrzeba
+//  KONFIGURACJA
 // ══════════════════════════════════════════════════
 const BOARD_ID  = 9806895585;
-const REFRESH_S = 30;          // sekundy między odświeżeniami (zmień na 60 dla minuty)
+const REFRESH_S = 30; // zmień na 60 dla minuty
 
 // ══════════════════════════════════════════════════
-const COL_IDS = ["status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418",
+const COL_IDS = [
+  "status9","color_mkwnevts","color_mm1qtcpa","color_mkwj4418",
   "color_mkwjsxje","color_mkwnp06x","color_mm1qa6dc","color_mkwnf17j",
-  "date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"];
+  "date_mm1qt8ds","date_mm1qejwn","date_mm1qvjxa","color_mm1q37tr"
+];
 
-const GQL = `query($ids:[ID!],$cols:[String!]){boards(ids:$ids){items_page(limit:500){items{id name url column_values(ids:$cols){id text}}}}}`;
+const GQL = `
+  query GetItems($boardId: ID!, $colIds: [String!]) {
+    boards(ids: [$boardId]) {
+      items_page(limit: 500) {
+        items {
+          id
+          name
+          url
+          column_values(ids: $colIds) {
+            id
+            text
+          }
+        }
+      }
+    }
+  }
+`;
 
 const STATUS_COLS = [
-  {id:'color_mkwnevts',label:'Projekt'},{id:'color_mm1qtcpa',label:'Fundamenty'},
-  {id:'color_mkwj4418',label:'Konstrukcja'},{id:'color_mkwjsxje',label:'Ściany'},
-  {id:'color_mkwnp06x',label:'Malarnia'},{id:'color_mm1qa6dc',label:'Magazyn'},
+  {id:'color_mkwnevts',label:'Projekt'},
+  {id:'color_mm1qtcpa',label:'Fundamenty'},
+  {id:'color_mkwj4418',label:'Konstrukcja'},
+  {id:'color_mkwjsxje',label:'Ściany'},
+  {id:'color_mkwnp06x',label:'Malarnia'},
+  {id:'color_mm1qa6dc',label:'Magazyn'},
   {id:'color_mkwnf17j',label:'Montaż'},
 ];
-const DATE_DEFS = [{id:'date_mm1qt8ds',label:'M1'},{id:'date_mm1qejwn',label:'M2'},{id:'date_mm1qvjxa',label:'M3'}];
-const MONTHS = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
-const DAYS   = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
-const STATUS_ORDER = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
+const DATE_DEFS  = [{id:'date_mm1qt8ds',label:'M1'},{id:'date_mm1qejwn',label:'M2'},{id:'date_mm1qvjxa',label:'M3'}];
+const MONTHS     = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+const DAYS       = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
+const S_ORDER    = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
+const CIRC       = 2 * Math.PI * 9;
 
 let items     = [];
 let visCols   = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','color_mm1qa6dc','color_mkwnf17j']);
 let curFilter = 'all';
 let countdown = REFRESH_S;
 let timerInt  = null;
-const CIRC    = 2 * Math.PI * 9; // ≈ 56.55
+let monday    = null;
 
-// ── monday SDK ──────────────────────────────────────────────────────
-let monday;
-try { monday = window.mondaySdk(); } catch(e) { monday = null; }
+// ── Status bar helper ────────────────────────────────────────────────
+function setStatus(msg, isErr) {
+  const bar = document.getElementById('statusbar');
+  bar.textContent = msg;
+  bar.className = 'statusbar ' + (isErr ? 'err' : 'ok');
+  if (!isErr) setTimeout(() => { bar.className = 'statusbar'; }, 3000);
+}
 
-// ── Fetch ───────────────────────────────────────────────────────────
+// ── SDK init ─────────────────────────────────────────────────────────
+// monday SDK wymaga wywołania PRZED jakimkolwiek api()
+function initSDK() {
+  try {
+    monday = window.mondaySdk();
+    monday.setApiVersion('2024-01');
+    return true;
+  } catch(e) {
+    setStatus('SDK init error: ' + e.message, true);
+    return false;
+  }
+}
+
+// ── Fetch ─────────────────────────────────────────────────────────────
 async function fetchData() {
   resetCountdown();
-  try {
-    if (!monday) throw new Error('no sdk');
-    const res = await monday.api(GQL, { variables: { ids: [String(BOARD_ID)], cols: COL_IDS } });
-    const raw = res?.data?.boards?.[0]?.items_page?.items;
-    if (!raw) throw new Error('empty');
 
-    items = raw.map(item => {
+  if (!monday) {
+    if (!initSDK()) { loadSnapshot(); render(); return; }
+  }
+
+  try {
+    const res = await monday.api(GQL, {
+      variables: {
+        boardId: String(BOARD_ID),
+        colIds:  COL_IDS
+      }
+    });
+
+    // monday SDK może zwrócić dane na różne sposoby
+    const boards = res?.data?.boards ?? res?.boards;
+    if (!boards || !boards[0]) throw new Error('Brak danych boards: ' + JSON.stringify(res).slice(0, 200));
+
+    const rawItems = boards[0]?.items_page?.items ?? boards[0]?.items;
+    if (!rawItems) throw new Error('Brak items: ' + JSON.stringify(boards[0]).slice(0, 200));
+
+    items = rawItems.map(item => {
       const cv = {};
-      item.column_values.forEach(c => { cv[c.id] = c.text || null; });
+      (item.column_values || []).forEach(c => { cv[c.id] = c.text || null; });
       return { id: item.id, name: item.name, url: item.url, cv };
     });
 
-    document.getElementById('ts').textContent = 'odświeżono ' + new Date().toLocaleTimeString('pl-PL');
-  } catch(e) {
+    document.getElementById('ts').textContent = 'live · ' + new Date().toLocaleTimeString('pl-PL');
+    setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień o ' + new Date().toLocaleTimeString('pl-PL'), false);
+
+  } catch(err) {
+    const msg = err?.message || String(err);
+    setStatus('⚠ Błąd API: ' + msg, true);
+    console.error('[Dashboard] fetch error:', err);
     if (items.length === 0) loadSnapshot();
-    document.getElementById('ts').textContent = '⚠ tryb offline';
   }
+
   render();
 }
 
-// ── Countdown ───────────────────────────────────────────────────────
+// ── Countdown ring ────────────────────────────────────────────────────
 function resetCountdown() {
   countdown = REFRESH_S;
   clearInterval(timerInt);
@@ -231,14 +296,13 @@ function resetCountdown() {
 }
 
 function updateRing() {
-  const pct  = countdown / REFRESH_S;
   const ring = document.getElementById('ring');
-  ring.style.strokeDashoffset = CIRC * (1 - pct);
+  ring.style.strokeDashoffset = CIRC * (1 - countdown / REFRESH_S);
   ring.style.stroke = countdown <= 5 ? '#e74c6e' : 'var(--accent)';
   document.getElementById('ring-lbl').textContent = countdown + 's';
 }
 
-// ── Render all ──────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────
 function render() {
   updateTiles();
   renderTable();
@@ -289,98 +353,98 @@ function msBadge(s) {
 
 function renderTable() {
   const list = getFiltered();
-  document.getElementById('ocnt').textContent = list.length+' zamówień';
-  const vis = STATUS_COLS.filter(c=>visCols.has(c.id));
+  document.getElementById('ocnt').textContent = list.length + ' zamówień';
+  const vis = STATUS_COLS.filter(c => visCols.has(c.id));
   let h='<tr><th>Zamówienie</th><th>Status</th>';
-  vis.forEach(c=>h+=`<th>${c.label}</th>`);
-  document.getElementById('th').innerHTML = h+'</tr>';
-  const sorted = [...list].sort((a,b)=>STATUS_ORDER.indexOf(a.cv.status9)-STATUS_ORDER.indexOf(b.cv.status9));
-  let body='';
-  sorted.forEach(item=>{
-    body+=`<tr><td><a class="olink" href="${item.url}" target="_blank"><div class="oname" title="${item.name}">${item.name}</div></a></td><td>${msBadge(item.cv.status9)}</td>`;
-    vis.forEach(c=>{body+=`<td>${badge(item.cv[c.id])}</td>`;});
-    body+='</tr>';
+  vis.forEach(c => h += `<th>${c.label}</th>`);
+  document.getElementById('th').innerHTML = h + '</tr>';
+  const sorted = [...list].sort((a,b) => S_ORDER.indexOf(a.cv.status9) - S_ORDER.indexOf(b.cv.status9));
+  let body = '';
+  sorted.forEach(item => {
+    body += `<tr><td><a class="olink" href="${item.url}" target="_blank"><div class="oname" title="${item.name}">${item.name}</div></a></td><td>${msBadge(item.cv.status9)}</td>`;
+    vis.forEach(c => { body += `<td>${badge(item.cv[c.id])}</td>`; });
+    body += '</tr>';
   });
   const tb = document.getElementById('tb');
-  tb.innerHTML = body||'<tr><td colspan="20" style="text-align:center;padding:24px;color:var(--dim)">Brak zamówień</td></tr>';
+  tb.innerHTML = body || '<tr><td colspan="20" style="text-align:center;padding:24px;color:var(--dim)">Brak zamówień</td></tr>';
   tb.classList.remove('flash'); void tb.offsetWidth; tb.classList.add('flash');
 }
 
 function buildColSel() {
-  const cont=document.getElementById('csel');
-  STATUS_COLS.forEach(c=>{
-    const btn=document.createElement('button');
-    btn.className='cbtn'+(visCols.has(c.id)?' on':'');
-    btn.textContent=c.label;
-    btn.onclick=()=>{visCols.has(c.id)?visCols.delete(c.id):visCols.add(c.id);btn.classList.toggle('on');renderTable();};
+  const cont = document.getElementById('csel');
+  STATUS_COLS.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'cbtn' + (visCols.has(c.id) ? ' on' : '');
+    btn.textContent = c.label;
+    btn.onclick = () => { visCols.has(c.id) ? visCols.delete(c.id) : visCols.add(c.id); btn.classList.toggle('on'); renderTable(); };
     cont.appendChild(btn);
   });
 }
 
 function buildCalendar() {
-  const events=[];
-  items.forEach(item=>{
-    DATE_DEFS.forEach(dd=>{
-      const v=item.cv[dd.id];
-      if(v&&/\d{4}-\d{2}-\d{2}/.test(v))
-        events.push({date:v.slice(0,10),name:item.name,person:item.cv.color_mm1q37tr,label:dd.label,url:item.url});
+  const events = [];
+  items.forEach(item => {
+    DATE_DEFS.forEach(dd => {
+      const v = item.cv[dd.id];
+      if (v && /\d{4}-\d{2}-\d{2}/.test(v))
+        events.push({ date: v.slice(0,10), name: item.name, person: item.cv.color_mm1q37tr, label: dd.label, url: item.url });
     });
   });
 
-  const months={};
-  events.forEach(ev=>{
-    const d=new Date(ev.date+'T12:00:00');
-    const k=`${d.getFullYear()}-${d.getMonth()}`;
-    if(!months[k]) months[k]={y:d.getFullYear(),m:d.getMonth(),days:{}};
-    const day=d.getDate();
-    if(!months[k].days[day]) months[k].days[day]=[];
+  const months = {};
+  events.forEach(ev => {
+    const d = new Date(ev.date + 'T12:00:00');
+    const k = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!months[k]) months[k] = { y: d.getFullYear(), m: d.getMonth(), days: {} };
+    const day = d.getDate();
+    if (!months[k].days[day]) months[k].days[day] = [];
     months[k].days[day].push(ev);
   });
 
-  const today=new Date();
-  for(let o=0;o<=1;o++){
-    const d=new Date(today.getFullYear(),today.getMonth()+o,1);
-    const k=`${d.getFullYear()}-${d.getMonth()}`;
-    if(!months[k]) months[k]={y:d.getFullYear(),m:d.getMonth(),days:{}};
+  const today = new Date();
+  for (let o = 0; o <= 1; o++) {
+    const d = new Date(today.getFullYear(), today.getMonth()+o, 1);
+    const k = `${d.getFullYear()}-${d.getMonth()}`;
+    if (!months[k]) months[k] = { y: d.getFullYear(), m: d.getMonth(), days: {} };
   }
 
-  const sorted=Object.values(months).sort((a,b)=>a.y*12+a.m-(b.y*12+b.m));
-  const wrap=document.getElementById('cwrap');
-  wrap.innerHTML='';
-  document.getElementById('ccnt').textContent=events.length+' terminów';
+  const sorted = Object.values(months).sort((a,b) => a.y*12+a.m - (b.y*12+b.m));
+  const wrap = document.getElementById('cwrap');
+  wrap.innerHTML = '';
+  document.getElementById('ccnt').textContent = events.length + ' terminów';
 
-  sorted.forEach(({y,m,days})=>{
-    const firstDOW=(new Date(y,m,1).getDay()+6)%7;
-    const dim=new Date(y,m+1,0).getDate();
-    const block=document.createElement('div');
-    block.className='mblock';
-    let html=`<div class="mttl">${MONTHS[m]} <span class="myr">${y}</span></div><div class="cgrid">`;
-    DAYS.forEach(d=>{html+=`<div class="chd">${d}</div>`;});
-    for(let i=0;i<firstDOW;i++) html+='<div class="cday empty"></div>';
-    for(let d=1;d<=dim;d++){
-      const isToday=today.getFullYear()===y&&today.getMonth()===m&&today.getDate()===d;
-      html+=`<div class="cday${isToday?' today':''}"><div class="cdn">${d}</div>`;
-      if(days[d]) days[d].forEach(ev=>{
-        const p=(ev.person||'').toLowerCase();
-        const cls=p==='jacek'?'ej':p==='adam'?'ea':'eo';
-        const short=ev.name.length>15?ev.name.slice(0,13)+'…':ev.name;
-        html+=`<div class="ev ${cls}" title="${ev.name} – ${ev.label}">${short}</div>`;
+  sorted.forEach(({ y, m, days }) => {
+    const firstDOW = (new Date(y,m,1).getDay()+6)%7;
+    const dim = new Date(y,m+1,0).getDate();
+    const block = document.createElement('div');
+    block.className = 'mblock';
+    let html = `<div class="mttl">${MONTHS[m]} <span class="myr">${y}</span></div><div class="cgrid">`;
+    DAYS.forEach(d => { html += `<div class="chd">${d}</div>`; });
+    for (let i = 0; i < firstDOW; i++) html += '<div class="cday empty"></div>';
+    for (let d = 1; d <= dim; d++) {
+      const isToday = today.getFullYear()===y && today.getMonth()===m && today.getDate()===d;
+      html += `<div class="cday${isToday?' today':''}"><div class="cdn">${d}</div>`;
+      if (days[d]) days[d].forEach(ev => {
+        const p = (ev.person||'').toLowerCase();
+        const cls = p==='jacek'?'ej':p==='adam'?'ea':'eo';
+        const short = ev.name.length>15 ? ev.name.slice(0,13)+'…' : ev.name;
+        html += `<div class="ev ${cls}" title="${ev.name} – ${ev.label}">${short}</div>`;
       });
-      html+='</div>';
+      html += '</div>';
     }
-    html+='</div>';
-    block.innerHTML=html;
+    html += '</div>';
+    block.innerHTML = html;
     wrap.appendChild(block);
   });
 
-  const persons=[...new Set(events.map(e=>e.person).filter(Boolean))];
-  const cmap={Jacek:'#4f8fff',Adam:'#00c875'};
-  document.getElementById('clgnd').innerHTML=persons.length
-    ?persons.map(p=>`<div class="leg"><div class="ldot" style="background:${cmap[p]||'#9b59f5'}"></div>${p}</div>`).join('')
-    :'<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
+  const persons = [...new Set(events.map(e=>e.person).filter(Boolean))];
+  const cmap = {Jacek:'#4f8fff',Adam:'#00c875'};
+  document.getElementById('clgnd').innerHTML = persons.length
+    ? persons.map(p=>`<div class="leg"><div class="ldot" style="background:${cmap[p]||'#9b59f5'}"></div>${p}</div>`).join('')
+    : '<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
 }
 
-// ── Snapshot fallback ───────────────────────────────────────────────
+// ── Snapshot fallback ─────────────────────────────────────────────────
 function loadSnapshot() {
   items = [
     {id:"11441788906",name:"4 / Sosnowiec",url:"https://growton.monday.com/boards/9806895585/pulses/11441788906",cv:{status9:"Fundament / pomiar",color_mkwnevts:"Czeka",color_mm1qtcpa:"Czeka",color_mkwj4418:"Czeka",color_mkwjsxje:"Czeka",color_mkwnp06x:"Czeka",color_mm1qa6dc:"Czeka",color_mkwnf17j:"Czeka",color_mm1q37tr:null,date_mm1qt8ds:null,date_mm1qejwn:null,date_mm1qvjxa:null}},
@@ -400,8 +464,9 @@ function loadSnapshot() {
   ];
 }
 
-// ── Start ───────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────────
 buildColSel();
+initSDK();
 fetchData();
 </script>
 </body>
