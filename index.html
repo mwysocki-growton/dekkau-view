@@ -167,7 +167,7 @@
 <script>
 // ══════════════════════════════════════════════════
 //  ▼▼▼ ZMIEŃ TEN URL NA SWÓJ ADRES VERCEL ▼▼▼
-const API_URL = 'https://dekkau-api.vercel.app/api/orders';
+const API_URL = 'https://TWOJ-PROJEKT.vercel.app/api/orders';
 //  ▲▲▲ np. 'https://dekkau-api.vercel.app/api/orders' ▲▲▲
 
 const REFRESH_S = 30; // sekund między odświeżeniami (zmień na 60 dla minuty)
@@ -347,21 +347,30 @@ function lighten(hex) {
 function buildCalendar() {
   const EKIPA_COL = 'color_mm29yzn4';
 
+  const today    = new Date();
+  const minYear  = today.getFullYear();
+  const minMonth = today.getMonth();
+
   const events = [];
   items.forEach(item => {
     DATE_DEFS.forEach(dd => {
       const v = item.cv[dd.id];
-      if (v && /\d{4}-\d{2}-\d{2}/.test(v))
-        events.push({
-          date:   v.slice(0,10),
-          name:   item.name,
-          ekipa:  item.cv[EKIPA_COL] || null, // etykieta np. "Jacek"
-          label:  dd.label,
-          url:    item.url,
-        });
+      if (!v || !/\d{4}-\d{2}-\d{2}/.test(v)) return;
+      const d = new Date(v.slice(0,10) + 'T12:00:00');
+      // Pomijaj daty z przeszłych miesięcy
+      if (d.getFullYear() < minYear) return;
+      if (d.getFullYear() === minYear && d.getMonth() < minMonth) return;
+      events.push({
+        date:  v.slice(0,10),
+        name:  item.name,
+        ekipa: item.cv[EKIPA_COL] || null,
+        label: dd.label,
+        url:   item.url,
+      });
     });
   });
 
+  // Zawsze pokaż bieżący miesiąc + 2 kolejne (nawet bez eventów)
   const months = {};
   events.forEach(ev => {
     const d = new Date(ev.date + 'T12:00:00');
@@ -371,8 +380,6 @@ function buildCalendar() {
     if (!months[k].days[day]) months[k].days[day] = [];
     months[k].days[day].push(ev);
   });
-
-  const today = new Date();
   for (let o = 0; o <= 2; o++) {
     const d = new Date(today.getFullYear(), today.getMonth()+o, 1);
     const k = `${d.getFullYear()}-${d.getMonth()}`;
