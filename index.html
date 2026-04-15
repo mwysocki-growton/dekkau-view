@@ -131,7 +131,7 @@
 </div>
 
 <div class="tiles">
-  <div class="tile t0 on" onclick="setFilter('all')">
+  <div class="tile t0" onclick="setFilter('all')">
     <div class="tnum" id="n0">—</div>
     <div class="tinfo"><div class="tlbl">Zamówienia</div><div class="tsub">Wszystkie aktywne</div><div class="tbar"><div class="tbar-f" style="width:100%"></div></div></div>
   </div>
@@ -139,7 +139,7 @@
     <div class="tnum" id="n1">—</div>
     <div class="tinfo"><div class="tlbl">Przygotowanie</div><div class="tsub">Fundament / pomiar</div><div class="tbar"><div class="tbar-f" id="b1"></div></div></div>
   </div>
-  <div class="tile t2" onclick="setFilter('prod')">
+  <div class="tile t2 on" onclick="setFilter('prod')">
     <div class="tnum" id="n2">—</div>
     <div class="tinfo"><div class="tlbl">W Produkcji</div><div class="tsub">Produkcja / Magazyn</div><div class="tbar"><div class="tbar-f" id="b2"></div></div></div>
   </div>
@@ -167,7 +167,7 @@
 <script>
 // ══════════════════════════════════════════════════
 //  ▼▼▼ ZMIEŃ TEN URL NA SWÓJ ADRES VERCEL ▼▼▼
-const API_URL = 'https://dekkau-api.vercel.app/api/orders';
+const API_URL = 'https://TWOJ-PROJEKT.vercel.app/api/orders';
 //  ▲▲▲ np. 'https://dekkau-api.vercel.app/api/orders' ▲▲▲
 
 const REFRESH_S = 30; // sekund między odświeżeniami (zmień na 60 dla minuty)
@@ -188,11 +188,12 @@ const DAYS      = ['Pon','Wt','Śr','Czw','Pt','Sob','Nd'];
 const S_ORDER   = ['Montaż','Produkcja','Magazyn','Fundament / pomiar','Projekt','Zrealizowane','Rozliczone'];
 const CIRC      = 2 * Math.PI * 9;
 
-let items     = [];
-let visCols   = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','color_mm1qa6dc','color_mkwnf17j']);
-let curFilter = 'all';
-let countdown = REFRESH_S;
-let timerInt  = null;
+let items       = [];
+let ekipaLabels = {}; // { "Jacek": { label, color, border }, ... } — dynamicznie z API
+let visCols     = new Set(['color_mkwnevts','color_mkwj4418','color_mkwnp06x','color_mm1qa6dc','color_mkwnf17j']);
+let curFilter   = 'prod';
+let countdown   = REFRESH_S;
+let timerInt    = null;
 
 // ── Status bar ────────────────────────────────────────────────────
 function setStatus(msg, isErr) {
@@ -213,6 +214,7 @@ async function fetchData() {
     if (!data.items) throw new Error('Brak items w odpowiedzi');
 
     items = data.items;
+    if (data.ekipaLabels) ekipaLabels = data.ekipaLabels;
     const t = new Date(data.fetchedAt).toLocaleTimeString('pl-PL');
     document.getElementById('ts').textContent = 'live · ' + t;
     setStatus('✓ Zsynchronizowano ' + items.length + ' zamówień · ' + t, false);
@@ -317,13 +319,46 @@ function buildColSel() {
   });
 }
 
+// Zwraca style inline dla eventu na podstawie etykiety ekipy
+function ekipaStyle(label) {
+  if (!label) return 'background:rgba(122,128,153,.15);color:#9aa0b8;border-color:#555a6e;';
+  const e = ekipaLabels[label];
+  if (!e) return 'background:rgba(122,128,153,.15);color:#9aa0b8;border-color:#555a6e;';
+  // Rozjaśniony kolor tła (15% opacity), kolor tekstu i border z definicji statusu
+  return `background:${hexToRgba(e.color, 0.18)};color:${lighten(e.color)};border-color:${e.color};`;
+}
+
+// Hex -> rgba(r,g,b,a)
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Rozjaśnij kolor tekstu (mix z białym)
+function lighten(hex) {
+  const r = Math.min(255, parseInt(hex.slice(1,3),16) + 80);
+  const g = Math.min(255, parseInt(hex.slice(3,5),16) + 80);
+  const b = Math.min(255, parseInt(hex.slice(5,7),16) + 80);
+  return `rgb(${r},${g},${b})`;
+}
+
 function buildCalendar() {
+  const EKIPA_COL = 'color_mm29yzn4';
+
   const events = [];
   items.forEach(item => {
     DATE_DEFS.forEach(dd => {
       const v = item.cv[dd.id];
       if (v && /\d{4}-\d{2}-\d{2}/.test(v))
-        events.push({ date: v.slice(0,10), name: item.name, person: item.cv.color_mm1q37tr, label: dd.label, url: item.url });
+        events.push({
+          date:   v.slice(0,10),
+          name:   item.name,
+          ekipa:  item.cv[EKIPA_COL] || null, // etykieta np. "Jacek"
+          label:  dd.label,
+          url:    item.url,
+        });
     });
   });
 
@@ -338,7 +373,7 @@ function buildCalendar() {
   });
 
   const today = new Date();
-  for (let o = 0; o <= 1; o++) {
+  for (let o = 0; o <= 2; o++) {
     const d = new Date(today.getFullYear(), today.getMonth()+o, 1);
     const k = `${d.getFullYear()}-${d.getMonth()}`;
     if (!months[k]) months[k] = { y:d.getFullYear(), m:d.getMonth(), days:{} };
@@ -361,10 +396,10 @@ function buildCalendar() {
       const isToday = today.getFullYear()===y && today.getMonth()===m && today.getDate()===d;
       html += `<div class="cday${isToday?' today':''}"><div class="cdn">${d}</div>`;
       if (days[d]) days[d].forEach(ev => {
-        const p = (ev.person||'').toLowerCase();
-        const cls = p==='jacek'?'ej':p==='adam'?'ea':'eo';
+        const style = ekipaStyle(ev.ekipa);
         const short = ev.name.length>15 ? ev.name.slice(0,13)+'…' : ev.name;
-        html += `<div class="ev ${cls}" title="${ev.name} – ${ev.label}">${short}</div>`;
+        const tooltip = `${ev.name}${ev.ekipa ? ' · ' + ev.ekipa : ''} – ${ev.label}`;
+        html += `<div class="ev" style="${style}" title="${tooltip}">${short}</div>`;
       });
       html += '</div>';
     }
@@ -373,11 +408,26 @@ function buildCalendar() {
     wrap.appendChild(block);
   });
 
-  const persons = [...new Set(events.map(e=>e.person).filter(Boolean))];
-  const cmap = {Jacek:'#4f8fff',Adam:'#00c875'};
-  document.getElementById('clgnd').innerHTML = persons.length
-    ? persons.map(p=>`<div class="leg"><div class="ldot" style="background:${cmap[p]||'#9b59f5'}"></div>${p}</div>`).join('')
-    : '<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
+  // ── Legenda dynamiczna z ekipaLabels ──────────────────────────────
+  const usedEkipy = [...new Set(events.map(e=>e.ekipa).filter(Boolean))];
+  const lgnd = document.getElementById('clgnd');
+
+  if (!usedEkipy.length && !Object.keys(ekipaLabels).length) {
+    lgnd.innerHTML = '<span style="color:var(--dim);font-size:10px">Brak terminów montażu</span>';
+    return;
+  }
+
+  // Pokaż wszystkie znane ekipy z API (nie tylko te które mają terminy)
+  const allEkipy = Object.keys(ekipaLabels).length
+    ? Object.values(ekipaLabels)
+    : usedEkipy.map(l => ({ label: l, color: '#7a8099' }));
+
+  lgnd.innerHTML = allEkipy.map(e =>
+    `<div class="leg">
+      <div class="ldot" style="background:${e.color}"></div>
+      <span>${e.label}</span>
+    </div>`
+  ).join('');
 }
 
 // ── Start ─────────────────────────────────────────────────────────
